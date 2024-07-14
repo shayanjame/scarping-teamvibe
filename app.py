@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from configparser import ConfigParser
 import pandas as pd
+import os
 
 # Read config.ini file
 config_object = ConfigParser()
@@ -58,7 +59,7 @@ if response.status_code == 200:
 
     # List to store information for each student
     students_list = []
-    for i in range(3, 27):
+    for i in range(3, 28):
 
         # Now, you can access the target URL
         response = session.get(target_url + str(i))
@@ -81,9 +82,15 @@ if response.status_code == 200:
             for student_item in student_items:
                 # Extract relevant information
 
-                student_name = student_item.find('div', class_='student__title').text.strip()
+                # response_page = session.get(student_item.find('a', href=True)['href'])
+                #
+                # soup_page = BeautifulSoup(response_page.text, 'html.parser')
+                # student_name = soup_page.find('span', {'class': 'profile__title title'}).text.strip()
+                # user_role = soup_page.find('span', {'class': 'profile__login'}).text.strip()
 
-                total_earned_coin_element = student_item.find('span', {'title': 'total earned coin'})
+                student_name = student_item.find('a', class_='student__title').text.strip()
+
+                total_earned_coin_element = student_item.find('span', {'title': 'تعداد کل سکه های دریافت شده'})
                 total_earned_coin = total_earned_coin_element.text.strip() if total_earned_coin_element else None
 
                 student_options = student_item.find_all('div', class_='student__option')
@@ -99,6 +106,7 @@ if response.status_code == 200:
                 student_info = {
                     'unit': description_title,
                     'name': student_name,
+                    # 'role': user_role,
                     'total_earned_coin': int(total_earned_coin.replace(',', '')),
                     'year': int(year),
                     'month': int(month),
@@ -109,13 +117,57 @@ if response.status_code == 200:
                 students_list.append(student_info)
 
         else:
-            print("Failed to access the target URL. Status code:", response.status_code)
+            print(f"Failed to access the {target_url + str(i)}. Status code: ", response.status_code)
+
+    # Specify the file path
+    file_path = './output/teamvibe.xlsx'
+
+    # Check if the file exists
+    if os.path.exists(file_path):
+        # If the file exists, delete it
+        os.remove(file_path)
+        print(f'The file {file_path} has been deleted.')
 
     # # Convert the list of dictionaries to a DataFrame
-    df = pd.DataFrame(students_list)
+    df = pd.DataFrame(students_list).sort_values('total_earned_coin', ascending=False)
+    writer = pd.ExcelWriter('./output/teamvibe.xlsx', engine='xlsxwriter')
 
     # # Export the DataFrame to Excel
-    df.to_excel('./output/teamvibe.xlsx', index=False, sheet_name='teamvibe')
+    df.to_excel(writer, index=False, sheet_name='teamvibe')
+
+    # Get the xlsxwriter workbook and worksheet objects.
+    workbook = writer.book
+    worksheet = writer.sheets['teamvibe']
+
+    farsi_format = workbook.add_format({
+        'font_name': 'B Mitra',
+        'align': 'center',
+        'valign': 'center'
+    })
+    worksheet.set_column('A:B', None, farsi_format)
+    worksheet.set_column('C:F', None, workbook.add_format({
+        'num_format': '#,##0',
+        'align': 'center',
+        'valign': 'center'
+    }))
+
+    worksheet.autofit()
+    header_format = workbook.add_format({
+        'bold': True,
+        'align': 'center',
+        'font_color': 'white',
+        'text_wrap': False,
+        'valign': 'center',
+        'fg_color': '#2A338F',
+        'border': 1})
+
+    # Write the column headers with the defined format.
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(0, col_num, value, header_format)
+
+    worksheet.autofit()
+    writer.close()
+    print(f'The DataFrame has been exported to {file_path}.')
 
 else:
     print("Login failed. Status code:", response.status_code)
